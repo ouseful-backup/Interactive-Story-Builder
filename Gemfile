@@ -29,7 +29,6 @@ gem "i18n-js", "~> 2.1.2" # to show translations in javascript
 gem "paperclip", "~> 3.4.0" # to upload files
 gem "paperclip-ffmpeg"
 gem "has_permalink", "~> 0.1.4" # create permalink slugs for nice urls
-gem "capistrano", "~> 2.12.0" # to deploy to server
 gem "exception_notification", "~> 2.5.2" # send an email when exception occurs
 gem "useragent", :git => "https://github.com/jilion/useragent.git" # browser detection
 #gem "pdfkit", "~> 0.5.2" # generate pdfs
@@ -60,10 +59,16 @@ group :development do
 #	gem "wkhtmltopdf-binary", "~> 0.9.5.3" # web kit that takes html and converts to pdf
   gem 'rb-inotify', '~> 0.8.8' # rails dev boost needs this
   gem 'rails-dev-boost', :git => 'git://github.com/thedarkone/rails-dev-boost.git' # speed up loading page in dev mode
+  gem "capistrano", "~> 3.2.1" # to deploy to server
+  gem 'capistrano3-puma', github: "seuros/capistrano-puma" # provide puma helpers for deploy
+  gem 'capistrano-rails',   '~> 1.1', require: false
+  gem 'capistrano-bundler', '~> 1.1', require: false  
+#  gem 'capistrano-rbenv', '~> 2.0', require: false
 end
 
 group :staging do
 	gem "unicorn", "~> 4.2.1" # http server
+#  gem 'puma', '~> 2.8.2'
 end
 
 group :production do

@@ -1,106 +1,93 @@
-####################################################################
-##### SET ALL VARIABLES UNDER config/deploy/env.rb             #####
-####################################################################
+puts "-- deploy.rb"
 
-set :stages, %w(production staging)
-set :default_stage, "staging" # if just run 'cap deploy' the staging environment will be used
 
-require 'capistrano/ext/multistage' # so we can deploy to staging and production servers
-require "bundler/capistrano" # Load Bundler's capistrano plugin.
+# config valid only for Capistrano 3.1
+lock '3.2.1'
 
-# these vars are set in deploy/env.rb
-#set :user, "placeholder"
-#set :application, "placeholder"
 
-set(:deploy_to) {"/home/#{user}/#{application}"}
+# Default branch is :master
+# ask :branch, proc { `git rev-parse --abbrev-ref HEAD`.chomp }.call
 
-set :deploy_via, :remote_cache
-set :use_sudo, false
 
-set :scm, "git"
-set(:branch) {"#{git_branch_name}"}
-set(:repository) {"git@github.com:#{github_account_name}/#{github_repo_name}.git"}
+# Default value for :scm is :git
+# set :scm, :git
 
-default_run_options[:pty] = true
-ssh_options[:forward_agent] = true
+# Default value for :format is :pretty
+# set :format, :pretty
 
+# Default value for :log_level is :debug
+# set :log_level, :debug
+
+# Default value for :pty is false
+# set :pty, true
+
+# Default value for :linked_files is []
+set :linked_files, %w{config/database.yml}
+
+# Default value for linked_dirs is []
+set :linked_dirs, %w{bin log tmp/pids tmp/cache tmp/sockets vendor/bundle public/system}
+
+# Default value for default_env is {}
+# set :default_env, { path: "/opt/ruby/bin:$PATH" }
+
+# Default value for keep_releases is 5
+# set :keep_releases, 5
 set :keep_releases, 2
-after "deploy", "deploy:cleanup" # remove the old releases
+
+set :ssh_options, {
+  forward_agent: true
+}
+
+# which config files should be copied by deploy:setup_config
+# see documentation in lib/capistrano/tasks/setup_config.cap
+# for details of operations
+set(:config_files, %w(
+  nginx.conf
+  database.yml
+  log_rotation
+  unicorn.rb
+  unicorn_init.sh
+))
+
+# which config files should be made executable after copying
+# by deploy:setup_config
+set(:executable_config_files, %w(
+  unicorn_init.sh
+))
+
+# files which need to be symlinked to other parts of the
+# filesystem. For example nginx virtualhosts, log rotation
+# init scripts etc.
+set(:symlinks, [
+  {
+    source: "nginx.conf",
+    link: "/etc/nginx/sites-enabled/{{full_app_name}}"
+  },
+  {
+    source: "unicorn_init.sh",
+    link: "/etc/init.d/unicorn_{{full_app_name}}"
+  },
+  {
+    source: "log_rotation",
+   link: "/etc/logrotate.d/{{full_app_name}}"
+  }
+])
 
 
 namespace :deploy do
-  %w[start stop restart].each do |command|
-    desc "#{command} unicorn server"
-    task command, roles: :app, except: {no_release: true} do
-      run "/etc/init.d/unicorn_#{application} #{command}"
-    end
-  end
 
-  task :setup_config, roles: :app do
-    sudo "ln -nfs #{current_path}/config/deploy/#{ngnix_conf_file_loc} /etc/nginx/sites-enabled/#{application}"
-    sudo "ln -nfs #{current_path}/config/deploy/#{unicorn_init_file_loc} /etc/init.d/unicorn_#{application}"
-    run "mkdir -p #{shared_path}/config"
-    put File.read("config/database.example.yml"), "#{shared_path}/config/database.yml"
-    puts "Now edit the config files in #{shared_path}."
-  end
-  after "deploy:setup", "deploy:setup_config"
+  # make sure we're deploying what we think we're deploying
+  before :deploy, "deploy:check_revision"
 
-  task :symlink_config, roles: :app do
-    run "ln -nfs #{shared_path}/config/database.yml #{release_path}/config/database.yml"
-		puts ">>>>>>>>>>>>>>>>>>>>>>>>>>>"
-		puts "If this is first time, be sure to run the following so app starts on server bootup: sudo update-rc.d unicorn_#{application} defaults"
-		puts ">>>>>>>>>>>>>>>>>>>>>>>>>>>"
-  end
-  after "deploy:finalize_update", "deploy:symlink_config"
+  # compile assets locally then rsync
+  after 'deploy:symlink:shared', 'deploy:compile_assets_locally'
+  after :finishing, 'deploy:cleanup'
 
-  desc "Make sure local git is in sync with remote."
-  task :check_revision, roles: :web do
-    unless `git rev-parse HEAD` == `git rev-parse origin/#{git_branch_name}`
-      puts "WARNING: HEAD is not the same as origin/#{git_branch_name}"
-      puts "Run `git push` to sync changes."
-      exit
-    end
-  end
-  before "deploy", "deploy:check_revision"
+  # reload nginx so it will pick up any modified vhosts from
+  # setup_config
+  after 'deploy:setup_config', 'nginx:reload'
 
-  task :folder_cleanup, roles: :app do
-#		logger.info "cleaning up release/db"
-#		run "rm -rf #{release_path}/db/*"
-		logger.info "cleaning up release/.git"
-		run "rm -rf #{release_path}/.git"
-  end
-  after "deploy:cleanup", "deploy:folder_cleanup"
-
-	# the code to test whether or not assets have changed and therefore need to be compiled was taken from answer at:
-	# - http://stackoverflow.com/questions/12919509/capistrano-deploy-assets-precompile-never-compiles-assets-why
-	# the code that builds assets locally and then copies to server was taken from:
-	# - http://www.rostamizadeh.net/blog/2012/04/14/precompiling-assets-locally-for-capistrano-deployment/
-	namespace :assets do
-    task :precompile, :roles => :web, :except => { :no_release => true } do
-      # Check if assets have changed. If not, don't run the precompile task - it takes a long time.
-      force_compile = false
-      changed_asset_count = 0
-      begin
-        from = source.next_revision(current_revision)
-        asset_locations = 'app/assets/ lib/assets vendor/assets'
-        changed_asset_count = capture("cd #{latest_release} && #{source.local.log(from)} #{asset_locations} | wc -l").to_i
-      rescue Exception => e
-        logger.info "Error: #{e}, forcing precompile"
-				logger.info "--> If this is the first deploy (deploy:cold), this is normal"
-        force_compile = true
-      end
-      if changed_asset_count > 0 || force_compile
-        logger.info "#{changed_asset_count} assets have changed; force_compile = #{force_compile}. Pre-compiling locally and pushing to shared/assets folder on server"
-        run_locally("rake assets:clean RAILS_ENV=#{rails_env} && rake assets:precompile RAILS_ENV=#{rails_env} ")
-        run_locally "cd public && tar -jcf assets.tar.bz2 assets"
-        top.upload "public/assets.tar.bz2", "#{shared_path}", :via => :scp
-        run "cd #{shared_path} && tar -jxf assets.tar.bz2 && rm assets.tar.bz2"
-        run_locally "rm public/assets.tar.bz2"
-        run_locally("rake assets:clean RAILS_ENV=#{rails_env}")
-      else
-        logger.info "#{changed_asset_count} assets have changed. Skipping asset pre-compilation"
-      end
-    end
-  end
-
+  # As of Capistrano 3.1, the `deploy:restart` task is not called
+  # automatically.
+  after 'deploy:publishing', 'deploy:restart'
 end
