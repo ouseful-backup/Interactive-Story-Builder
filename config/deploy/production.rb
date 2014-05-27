@@ -16,9 +16,12 @@ set :server_timeout, 30 # time in seconds before server timesout
 set :enable_ssl, false # whether we're using ssl or not
 ##################################
 
-puts "-- production.rb"
-puts "--- domain: #{fetch(:domain)}; github_account_name: #{fetch(:github_account_name)}"
+server fetch(:domain), user: fetch(:user), roles: [:web, :app, :db], primary: true # server where app is located
 
-server fetch(:domain), user: fetch(:user), roles: %w{web app, db}, primary: true # server where app is located
+#set :repo_url, 'git@example.com:me/my_repo.git'
+set :repo_url, "git@github.com:#{fetch(:github_account_name)}/#{fetch(:github_repo_name)}.git"
 
+# Default deploy_to directory is /var/www/my_app
+# set :deploy_to, '/var/www/my_app'
+set :deploy_to, "/home/#{fetch(:user)}/#{fetch(:full_app_name)}"
 

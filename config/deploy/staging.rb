@@ -16,8 +16,6 @@ set :server_timeout, 30 # time in seconds before server timesout
 set :enable_ssl, false # whether we're using ssl or not
 ##################################
 
-puts "-- staging.rb"
-
 server fetch(:domain), user: fetch(:user), roles: [:web, :app, :db], primary: true # server where app is located
 
 #set :repo_url, 'git@example.com:me/my_repo.git'

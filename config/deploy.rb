@@ -1,6 +1,3 @@
-puts "-- deploy.rb"
-
-
 # config valid only for Capistrano 3.1
 lock '3.2.1'
 
@@ -19,7 +16,7 @@ lock '3.2.1'
 # set :log_level, :debug
 
 # Default value for :pty is false
-# set :pty, true
+set :pty, true
 
 # Default value for :linked_files is []
 set :linked_files, %w{config/database.yml}
@@ -69,7 +66,7 @@ set(:symlinks, [
   },
   {
     source: "log_rotation",
-   link: "/etc/logrotate.d/{{full_app_name}}"
+    link: "/etc/logrotate.d/{{full_app_name}}"
   }
 ])
 
